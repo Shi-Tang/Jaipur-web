@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <style>
 :root{
   --bg:#F7E8EE; --surface:#FFF8FB; --panel:#EFD3DF; --ink:#2B1838; --muted:#6E5370; --line:#DDB7C8;
@@ -275,116 +275,122 @@ function viewFor(g,seat){
   return v;
 }
 
-/* ---------- 联网（PeerJS 点对点） ---------- */
-var PEER_PREFIX='camelbazaar-v1-';
-var peerOpts=(function(){
-  var q=new URLSearchParams(location.search),o={debug:0};
-  if(q.get('peerhost')){o.host=q.get('peerhost');o.port=+(q.get('peerport')||443);o.path=q.get('peerpath')||'/';o.secure=q.get('peersecure')!=='0';}
-  return o;
-})();
+/* ---------- 联网（通过公共 MQTT 服务器中转，不需要双方直连） ---------- */
+var BROKER=(new URLSearchParams(location.search)).get('broker')||'wss://broker.emqx.io:8084/mqtt';
+var TOPIC='camelbazaar/v1/';
 var role=null;          // 'host' | 'guest' | 'local'
-var peer=null,conn=null,mySeatId=null,linkUp=false,retryTimer=null,closing=false;
+var client=null,mySeatId=null,linkUp=false,hostOnline=false,guestName='',findTimer=null,hbTimer=null;
 
+function TP(c,s){return TOPIC+c+'/'+s;}
 function genCode(){var al='ABCDEFGHJKMNPQRSTUVWXYZ23456789',s='';for(var i=0;i<5;i++)s+=al[rnd(al.length)];return s;}
-function joinLink(c){return location.origin+location.pathname+location.search+'#join='+c;}
-function peerAvailable(){return typeof window.Peer==='function';}
-function peerErr(e){
-  var t=e&&e.type;
-  if(t==='peer-unavailable')return '找不到这张桌子。检查一下桌号，或者确认房主的页面还开着。';
-  if(t==='network'||t==='server-error'||t==='socket-error'||t==='socket-closed')return '连不上联机服务器，检查一下网络。';
-  if(t==='browser-incompatible')return '这个浏览器不支持在线对战，换个新版浏览器试试。';
-  if(t==='unavailable-id')return '桌号被占用了';
-  return '连接出错了'+(t?'（'+t+'）':'');
+function joinLink(c){return location.origin+location.pathname+'#join='+c;}
+function netAvailable(){return !!(window.mqtt&&typeof window.mqtt.connect==='function');}
+function cid(){return 'cb_'+makeToken().slice(0,16);}
+function send(topic,obj,opts){if(client&&client.connected)client.publish(topic,typeof obj==='string'?obj:JSON.stringify(obj),opts||{qos:1});}
+function connectBroker(will){
+  return mqtt.connect(BROKER,{clientId:cid(),clean:true,reconnectPeriod:2000,connectTimeout:10000,keepalive:20,will:will});
 }
 function teardown(){
-  closing=true;
-  clearTimeout(retryTimer);retryTimer=null;
-  try{if(conn)conn.close();}catch(e){}
-  try{if(peer)peer.destroy();}catch(e){}
-  peer=null;conn=null;linkUp=false;closing=false;
+  clearTimeout(findTimer);findTimer=null;clearInterval(hbTimer);hbTimer=null;
+  if(client){
+    var c=client;client=null;
+    try{
+      if(c.connected&&code){
+        if(role==='host')c.publish(TP(code,'host'),'offline',{qos:1,retain:true});
+        if(role==='guest')c.publish(TP(code,'toHost'),JSON.stringify({t:'bye',token:tok}),{qos:1});
+      }
+    }catch(e){}
+    try{c.end(false);}catch(e){}
+  }
+  linkUp=false;hostOnline=false;
 }
 
-/* 房主 */
+/* 房主：牌局保存在房主浏览器里，对手的操作由房主校验 */
 function saveHost(){if(role==='host'&&G)sset('cm-host-'+G.code,JSON.stringify(G));}
-function hostTable(c,g,attempt){
+function hostTable(c,g){
   teardown();
-  role='host';mode='table';G=g;code=c;mySeatId='0';tableNote='';err='';resetSel();built='';
+  role='host';mode='table';G=g;code=c;mySeatId='0';tableNote='';err='';netNote='正在连接联机服务器…';resetSel();built='';
   setHash('host='+c);saveHost();render();
-  peer=new Peer(PEER_PREFIX+c,peerOpts);
-  peer.on('open',function(){netNote='';render();});
-  peer.on('connection',function(cn){
-    cn.on('data',function(m){onGuestMsg(cn,m);});
-    cn.on('close',function(){if(cn===conn){conn=null;linkUp=false;render();}});
-    cn.on('error',function(){});
+  var cl=connectBroker({topic:TP(c,'host'),payload:'offline',qos:1,retain:true});
+  client=cl;
+  cl.on('connect',function(){
+    if(client!==cl)return;
+    cl.subscribe(TP(c,'toHost'),{qos:1});
+    cl.publish(TP(c,'host'),'online',{qos:1,retain:true});
+    netNote='';render();pushState();
   });
-  peer.on('disconnected',function(){if(!closing&&peer&&!peer.destroyed){netNote='和联机服务器断开了，正在重连…';render();setTimeout(function(){try{peer.reconnect();}catch(e){}},1500);}});
-  peer.on('error',function(e){
-    if(e.type==='unavailable-id'){
-      // 刷新后旧连接可能还没被服务器释放，稍后重试
-      attempt=(attempt||0)+1;
-      netNote='正在恢复牌桌…（'+attempt+'）';render();
-      if(attempt<12)retryTimer=setTimeout(function(){hostTable(c,G,attempt);},3000);
-      else{netNote='这个桌号被别的页面占着。如果你在别的标签页也开着这桌，请关掉它再刷新。';render();}
-      return;
-    }
-    if(e.type==='peer-unavailable')return;
-    netNote=peerErr(e);render();
+  cl.on('message',function(topic,payload){
+    if(client!==cl)return;
+    var m;try{m=JSON.parse(payload.toString());}catch(e){return;}
+    onGuestMsg(m);
   });
+  cl.on('offline',function(){if(client===cl){linkUp=false;netNote='和联机服务器断开了，正在重连…';render();}});
+  cl.on('error',function(e){if(client===cl){netNote='联机服务器出错：'+((e&&e.message)||'未知错误');render();}});
+  clearInterval(hbTimer);
+  hbTimer=setInterval(function(){if(client===cl&&cl.connected)cl.publish(TP(c,'host'),'online',{qos:1,retain:true});},15000);
 }
-function onGuestMsg(cn,m){
-  if(!m||typeof m!=='object')return;
+function onGuestMsg(m){
+  if(!m||typeof m!=='object'||!G)return;
+  var token=String(m.token||'');
+  if(!token)return;
   if(m.t==='hello'){
-    var name=String(m.name||'').slice(0,12)||'对手',token=String(m.token||'');
+    var name=String(m.name||'').slice(0,12)||'对手';
     if(!G.p['1']){
       G.p['1']=newPlayer(name,token);addLog(G,name+' 入座');
       startRound(G,rnd(2)?'1':'0');G.rev++;
     }else if(G.p['1'].token!==token){
-      cn.send({t:'reject',msg:'这张桌子已经坐满了。'});setTimeout(function(){try{cn.close();}catch(e){}},500);return;
+      send(TP(code,'to-'+token),{t:'reject',msg:'这张桌子已经坐满了。'});return;
     }
-    if(conn&&conn!==cn){try{conn.close();}catch(e){}}
-    conn=cn;linkUp=true;resetSel();saveHost();
-    pushState();render();return;
+    linkUp=true;resetSel();saveHost();pushState();render();return;
   }
-  if(cn!==conn)return;
+  if(!G.p['1']||G.p['1'].token!==token)return;
+  if(m.t==='bye'){linkUp=false;render();return;}
+  if(m.t==='ping'){if(!linkUp){linkUp=true;render();pushState();}return;}
+  linkUp=true;
   try{var g=clone(G);applyCmd(g,'1',m);g.rev++;G=g;resetSel();saveHost();pushState();render();}
-  catch(x){cn.send({t:'err',msg:typeof x==='string'?x:'操作失败'});}
+  catch(x){send(TP(code,'to-'+token),{t:'err',msg:typeof x==='string'?x:'操作失败'});pushState();}
 }
-function pushState(){if(conn&&conn.open)conn.send({t:'state',g:viewFor(G,'1')});}
+function pushState(){if(role==='host'&&G&&G.p['1'])send(TP(code,'to-'+G.p['1'].token),{t:'state',g:viewFor(G,'1')});}
 
-/* 对手（加入者） */
+/* 加入方 */
 function joinTable(c,name){
   teardown();
-  role='guest';mode='table';G=null;code=c;mySeatId='1';err='';tableNote='正在连接牌桌 '+c+' …';resetSel();built='';
+  role='guest';mode='table';G=null;code=c;mySeatId='1';guestName=name;err='';netNote='';tableNote='正在连接牌桌 '+c+' …';resetSel();built='';
   sset('cm-guest-last',c);setHash('join='+c);render();
-  peer=new Peer(peerOpts);
-  peer.on('open',function(){connectToHost(name);});
-  peer.on('disconnected',function(){if(!closing&&peer&&!peer.destroyed)setTimeout(function(){try{peer.reconnect();}catch(e){}},1500);});
-  peer.on('error',function(e){
-    if(e.type==='peer-unavailable'){
-      if(G){netNote='房主暂时离线，正在重连…';render();scheduleRetry(name);}
-      else{tableNote=peerErr(e);render();}
-      return;
+  var cl=connectBroker({topic:TP(c,'toHost'),payload:JSON.stringify({t:'bye',token:tok}),qos:1,retain:false});
+  client=cl;
+  cl.on('connect',function(){
+    if(client!==cl)return;
+    cl.subscribe([TP(c,'host'),TP(c,'to-'+tok)],{qos:1});
+    clearTimeout(findTimer);
+    findTimer=setTimeout(function(){
+      if(client===cl&&!hostOnline&&!G){tableNote='找不到这张桌子。检查一下桌号；如果房主关过网页，请房主重新打开网页点“回到这桌”，这边会自动接上。';render();}
+    },8000);
+  });
+  cl.on('message',function(topic,payload){
+    if(client!==cl)return;
+    var s=payload.toString();
+    if(topic===TP(c,'host')){
+      hostOnline=(s==='online');
+      if(hostOnline){
+        send(TP(c,'toHost'),{t:'hello',name:guestName,token:tok});
+        if(!G)tableNote='找到牌桌了，正在入座…';
+      }else{
+        linkUp=false;
+        if(G)netNote='房主暂时离线，等房主回来会自动接上。';
+        else tableNote='房主现在不在线。请房主打开网页点“回到这桌”，这边会自动接上。';
+      }
+      render();return;
     }
-    if(G){netNote=peerErr(e)+' 正在重试…';render();scheduleRetry(name);}else{tableNote=peerErr(e);render();}
-  });
-}
-function scheduleRetry(name){clearTimeout(retryTimer);retryTimer=setTimeout(function(){if(role==='guest'&&peer&&!peer.destroyed&&peer.open)connectToHost(name);},3000);}
-function connectToHost(name){
-  var cn=peer.connect(PEER_PREFIX+code,{reliable:true});
-  conn=cn;
-  cn.on('open',function(){cn.send({t:'hello',name:name,token:tok});});
-  cn.on('data',function(m){
-    if(cn!==conn||!m)return;
-    if(m.t==='state'){var d=m.g;if(!G||d.rev!==G.rev)resetSel();G=d;linkUp=true;netNote='';busy=false;clearTimeout(busyTimer);render();}
+    var m;try{m=JSON.parse(s);}catch(e){return;}
+    if(m.t==='state'){var d=m.g;if(!G||d.rev!==G.rev)resetSel();G=d;hostOnline=true;linkUp=true;netNote='';busy=false;clearTimeout(busyTimer);render();}
     else if(m.t==='err'){err=m.msg;busy=false;clearTimeout(busyTimer);render();}
-    else if(m.t==='reject'){tableNote=m.msg;G=null;teardown();render();}
+    else if(m.t==='reject'){teardown();role=null;G=null;tableNote=m.msg;render();}
   });
-  cn.on('close',function(){
-    if(cn!==conn||closing)return;
-    linkUp=false;busy=false;
-    if(G){netNote='和房主的连接断了，正在重连…';render();scheduleRetry(name);}
-  });
-  cn.on('error',function(){});
+  cl.on('offline',function(){if(client===cl&&G){linkUp=false;netNote='网络断了，正在重连…';render();}});
+  cl.on('error',function(){if(client===cl&&!G){tableNote='连不上联机服务器，检查一下网络。';render();}});
+  clearInterval(hbTimer);
+  hbTimer=setInterval(function(){if(client===cl&&cl.connected&&hostOnline)send(TP(c,'toHost'),{t:'ping',token:tok});},15000);
 }
 
 /* ---------- 页面状态 ---------- */
@@ -440,9 +446,9 @@ function renderLobby(){
     document.getElementById('nm').addEventListener('input',function(e){sset('cm-name',e.target.value.trim());});
     document.getElementById('jc').addEventListener('keydown',function(e){if(e.key==='Enter')doJoin();});
   }
-  document.getElementById('lobbyErr').textContent=err||(peerAvailable()?'':'联机组件没有加载成功（可能是网络问题），现在只能用“同屏对战”。');
-  document.getElementById('createBtn').disabled=!peerAvailable();
-  document.getElementById('joinBtn').disabled=!peerAvailable();
+  document.getElementById('lobbyErr').textContent=err||(netAvailable()?'':'联机组件没有加载成功（可能是网络问题），现在只能用“同屏对战”。');
+  document.getElementById('createBtn').disabled=!netAvailable();
+  document.getElementById('joinBtn').disabled=!netAvailable();
 }
 
 function cardHTML(c,attrs,extra){
@@ -587,8 +593,8 @@ function commit(m){
   if(busy||!G)return;
   err='';
   if(role==='guest'){
-    if(!conn||!conn.open||!linkUp){err='还没连上房主，稍等一下。';render();return;}
-    busy=true;render();conn.send(m);
+    if(!client||!client.connected||!linkUp){err='还没连上房主，稍等一下。';render();return;}
+    busy=true;render();send(TP(code,'toHost'),Object.assign({token:tok},m));
     clearTimeout(busyTimer);busyTimer=setTimeout(function(){if(busy){busy=false;err='房主没有回应，请再试一次。';render();}},8000);
     return;
   }
@@ -604,7 +610,7 @@ function createTable(){
   var name=getName();
   if(!name){err='先填一个昵称';render();document.getElementById('nm').focus();return;}
   var c=genCode();var g=newGame(c,name,tok);addLog(g,name+' 开了这张桌子');
-  copied=false;hostTable(c,g,0);
+  copied=false;hostTable(c,g);
 }
 function doJoin(){
   var name=getName();
@@ -636,7 +642,7 @@ $app.addEventListener('click',function(ev){
     case 'create':createTable();break;
     case 'join':doJoin();break;
     case 'local':startLocal();break;
-    case 'resume':{var c=b.getAttribute('data-code');try{var g=JSON.parse(sget('cm-host-'+c));if(g){copied=false;hostTable(c,g,0);}}catch(e){}break;}
+    case 'resume':{var c=b.getAttribute('data-code');try{var g=JSON.parse(sget('cm-host-'+c));if(g){copied=false;hostTable(c,g);}}catch(e){}break;}
     case 'forget':sdel('cm-host-'+b.getAttribute('data-code'));built='';render();break;
     case 'lobby':goLobby();break;
     case 'copy':copyText(joinLink(G.code)).then(function(){copied=true;render();},function(){});break;
@@ -659,19 +665,18 @@ $app.addEventListener('click',function(ev){
 (function boot(){
   var h=location.hash;
   var mh=h.match(/^#host=([A-Z0-9]{4,6})$/i);
-  if(mh&&peerAvailable()){
+  if(mh&&netAvailable()){
     var c=mh[1].toUpperCase();
-    try{var g=JSON.parse(sget('cm-host-'+c));if(g){hostTable(c,g,0);return;}}catch(e){}
+    try{var g=JSON.parse(sget('cm-host-'+c));if(g){hostTable(c,g);return;}}catch(e){}
   }
   var mj=h.match(/^#join=([A-Z0-9]{4,6})$/i);
-  if(mj&&peerAvailable()&&sget('cm-name')&&sget('cm-guest-last')===mj[1].toUpperCase()){
+  if(mj&&netAvailable()&&sget('cm-name')&&sget('cm-guest-last')===mj[1].toUpperCase()){
     // 刷新页面时自动重新入座
     joinTable(mj[1].toUpperCase(),sget('cm-name'));return;
   }
   render();
   if(mj){var nmEl=document.getElementById('nm');if(nmEl&&!nmEl.value)nmEl.focus();}
 })();
-window.addEventListener('beforeunload',function(){closing=true;try{if(peer)peer.destroy();}catch(e){}});
 })();
 </script>
 </body>
