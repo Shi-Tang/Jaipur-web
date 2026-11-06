@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>骆驼集市 · 在线对战</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+:root{
+  --bg:#F7E8EE; --surface:#FFF8FB; --panel:#EFD3DF; --ink:#2B1838; --muted:#6E5370; --line:#DDB7C8;
+  --accent:#AE1550; --accent-ink:#FFFFFF; --gold:#B37A00; --gold-ink:#FFFFFF; --focus:#1E62C9; --ok:#2E8B57;
+  --card:#FFFBF2; --card-ink:#2B1838; --back:#5B2A6E;
+  --g-diamond:#C42D4B; --g-gold:#C98E0C; --g-silver:#76839C; --g-cloth:#7449C9; --g-spice:#DA5F24; --g-leather:#845528; --g-camel:#B88B4A;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#1A1027; --surface:#251836; --panel:#33234A; --ink:#F5E9F0; --muted:#BCA6C2; --line:#4C3766;
+    --accent:#F2679A; --accent-ink:#1A1027; --gold:#F2B33D; --gold-ink:#1A1027; --focus:#86B6FF; --ok:#6FD39B;
+    --card:#FFF6E6; --card-ink:#2B1838; --back:#8A4AA6;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 "PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;-webkit-text-size-adjust:100%;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+#app{max-width:780px;margin:0 auto;padding:16px 14px 48px}
+h1,h2,.coin,.big{font-family:"ZCOOL XiaoWei","Songti SC","STSong","Noto Serif SC",serif;font-weight:400}
+.hero{padding:26px 4px 6px}
+.hero h1{font-size:clamp(46px,13vw,76px);line-height:1;margin:0;color:var(--accent);letter-spacing:.05em}
+.lede{margin:12px 0 0;max-width:28em;color:var(--muted)}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}
+.box h2{font-size:24px;margin:0 0 8px;line-height:1.2}
+.box p{margin:0 0 10px}
+.box p:last-child{margin-bottom:0}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;font-size:14px;color:var(--muted)}
+input{font:inherit;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;max-width:320px}
+input.code{max-width:150px;text-transform:uppercase;letter-spacing:.15em;font-weight:700}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{font:inherit;font-size:15px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);padding:9px 18px;border-radius:999px;cursor:pointer;line-height:1.3}
+.btn:hover:not(:disabled){border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.small{font-size:14px;padding:6px 14px}
+.btn.ghost{border-color:transparent;background:transparent;padding-left:2px;color:var(--muted)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.err{color:var(--accent);margin:10px 0 0;font-size:14px;min-height:1.4em}
+.muted{color:var(--muted)}
+.codev{letter-spacing:.12em;font-weight:700}
+.linkbox{font-size:14px;word-break:break-all;background:var(--panel);padding:8px 12px;border-radius:10px;margin:0 0 10px}
+details summary{cursor:pointer;font-weight:600}
+details[open] summary{margin-bottom:8px}
+.rules p{font-size:15px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:5px;vertical-align:middle}
+.dot.on{background:var(--ok)}
+
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.topbar .info{font-size:14px;color:var(--muted)}
+.seat{background:var(--surface);border:1.5px solid var(--line);border-radius:16px;padding:12px 14px;margin:10px 0}
+.seat.active{border-color:var(--gold);box-shadow:0 0 0 3px color-mix(in srgb,var(--gold) 28%,transparent)}
+.who{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.pname{font-weight:700;font-size:17px}
+.tag{font-size:12px;background:var(--gold);color:var(--gold-ink);padding:2px 9px;border-radius:999px;font-weight:600}
+.seals{font-size:15px;letter-spacing:2px;color:var(--muted)}
+.seat-row{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;font-size:14px}
+.mini-back{display:inline-block;width:14px;height:20px;border-radius:7px 7px 2px 2px;background:var(--back);margin-right:3px;vertical-align:middle}
+.backs{display:flex;align-items:center;flex-wrap:wrap;gap:0}
+.backs .cnt{margin-left:6px}
+
+.board{background:var(--panel);border-radius:18px;padding:14px;margin:10px 0}
+.piles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.pile{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:12px;color:var(--muted);text-align:center}
+.coin{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-size:24px;line-height:1;background:var(--surface);color:var(--ink);border:3px solid var(--gc)}
+.pile.empty .coin{opacity:.4;border-style:dashed}
+.pile .vals{font-size:12px;line-height:1.35;color:var(--ink);font-variant-numeric:tabular-nums;word-spacing:2px}
+.bonus-row{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 4px}
+.bchip{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--surface);color:var(--muted)}
+.market-row{display:flex;gap:12px;align-items:flex-end;overflow-x:auto;padding:12px 2px 4px}
+.market,.hand{display:flex;gap:8px;flex-wrap:wrap}
+.market{flex-wrap:nowrap}
+.card{--w:62px;width:var(--w);height:calc(var(--w) * 1.45);flex:none;border-radius:calc(var(--w) / 2) calc(var(--w) / 2) 8px 8px;border:3px solid var(--gc);background:linear-gradient(to top,var(--gc) 0 24px,var(--card) 24px);color:var(--card-ink);display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:15px 0 3px;font:inherit;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease}
+.card .em{font-size:26px;line-height:1}
+.card .cn{font-size:12px;color:#fff;font-weight:600;text-shadow:0 1px 1px rgba(0,0,0,.4);line-height:16px}
+.card.sel{transform:translateY(-9px);box-shadow:0 0 0 3px var(--accent)}
+.card:disabled{cursor:default}
+.card.back{background:repeating-linear-gradient(45deg,var(--back) 0 6px,color-mix(in srgb,var(--back) 72%,#fff) 6px 12px);border-color:var(--back);cursor:default}
+.deck{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--muted);margin-left:auto;flex:none}
+
+.status{margin:12px 0}
+.status .line{font-weight:700;font-size:17px;margin:0 0 4px}
+.hint{font-size:14px;color:var(--muted);margin:0 0 10px}
+.status .err{margin:0 0 8px}
+.herd-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px}
+.stepper{display:flex;align-items:center;gap:8px;font-size:14px}
+.stepper button{width:34px;height:34px;border-radius:50%;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font-size:18px;cursor:pointer;line-height:1}
+.stepper output{min-width:1.5em;text-align:center;font-weight:700}
+.income{font-size:14px;color:var(--muted);margin:10px 0 0}
+.result h2{margin-bottom:4px}
+.scroll{overflow-x:auto}
+.result table{border-collapse:collapse;width:100%;margin:10px 0;font-size:15px}
+.result th,.result td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+.result th:first-child,.result td:first-child{text-align:left}
+.result tr.total td{font-weight:700}
+.cover{text-align:center;padding:56px 16px}
+.cover .big{font-size:34px;margin:0 0 6px}
+.log ul{margin:0;padding-left:1.1em;font-size:14px}
+.log li{margin:2px 0}
+.waiting .codev{font-size:28px}
+@media (max-width:540px){
+  .card{--w:50px;padding-top:11px}
+  .card .em{font-size:21px}
+  .card .cn{font-size:11px}
+  .piles{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .market{gap:6px}
+}
+@media (prefers-reduced-motion:reduce){.card{transition:none}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function(){
+'use strict';
+var $app=document.getElementById('app');
+
+/* ---------- 规则数据 ---------- */
+var GOODS=['diamond','gold','silver','cloth','spice','leather'];
+var INFO={
+  diamond:{n:'钻石',e:'💎',count:6,tokens:[7,7,5,5,5],min:2},
+  gold:{n:'黄金',e:'🪙',count:6,tokens:[6,6,5,5,5],min:2},
+  silver:{n:'白银',e:'🥈',count:6,tokens:[5,5,5,5,5],min:2},
+  cloth:{n:'丝绸',e:'🧣',count:8,tokens:[5,3,3,2,2,1,1],min:1},
+  spice:{n:'香料',e:'🌶️',count:8,tokens:[5,3,3,2,2,1,1],min:1},
+  leather:{n:'皮革',e:'👞',count:10,tokens:[4,3,2,1,1,1,1,1,1],min:1},
+  camel:{n:'骆驼',e:'🐪',count:11}
+};
+var BONUS={'3':[1,1,2,2,2,3,3],'4':[4,4,5,5,6,6],'5':[8,8,9,10,10]};
+
+function rnd(n){var a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]%n;}
+function shuffle(a){for(var i=a.length-1;i>0;i--){var j=rnd(i+1);var t=a[i];a[i]=a[j];a[j]=t;}return a;}
+function clone(o){return JSON.parse(JSON.stringify(o));}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function sum(a){return (a||[]).reduce(function(x,y){return x+(y||0);},0);}
+function sortHand(h){h.sort(function(a,b){return GOODS.indexOf(a)-GOODS.indexOf(b);});}
+function other(s){return s==='0'?'1':'0';}
+function nm(g,s){return (g.p[s]&&g.p[s].name)||'对手';}
+function addLog(g,t){g.log=g.log||[];g.log.push(t);if(g.log.length>40)g.log=g.log.slice(-40);}
+
+/* ---------- 本机存储 ---------- */
+var mem={};
+function sget(k){try{var v=localStorage.getItem(k);return v===null?(k in mem?mem[k]:null):v;}catch(e){return k in mem?mem[k]:null;}}
+function sset(k,v){mem[k]=v;try{localStorage.setItem(k,v);}catch(e){}}
+function sdel(k){delete mem[k];try{localStorage.removeItem(k);}catch(e){}}
+function makeToken(){return Array.from(crypto.getRandomValues(new Uint8Array(12)),function(b){return b.toString(16).padStart(2,'0');}).join('');}
+var tok=sget('cm-token');if(!tok){tok=makeToken();sset('cm-token',tok);}
+
+/* ---------- 游戏引擎 ---------- */
+function newPlayer(name,token){return {name:name,token:token,seals:0,hand:[],herd:0,goods:[],bonus:[],btier:[]};}
+function newGame(code,name,token){
+  return {code:code,status:'waiting',rev:0,
+    p:{'0':newPlayer(name,token),'1':null},round:0,turn:'0',starter:'0',nextStarter:'0',
+    deck:[],market:[],tokens:{},bonus:{'3':[],'4':[],'5':[]},deckOut:false,result:null,log:[]};
+}
+function startRound(G,starter){
+  var deck=[];
+  GOODS.forEach(function(g){for(var i=0;i<INFO[g].count;i++)deck.push(g);});
+  for(var i=0;i<INFO.camel.count-3;i++)deck.push('camel');
+  shuffle(deck);
+  G.market=['camel','camel','camel',deck.pop(),deck.pop()];
+  ['0','1'].forEach(function(s){
+    var P=G.p[s];P.hand=[];P.herd=0;P.goods=[];P.bonus=[];P.btier=[];
+    for(var k=0;k<5;k++){var c=deck.pop();if(c==='camel')P.herd++;else P.hand.push(c);}
+    sortHand(P.hand);
+  });
+  G.deck=deck;G.tokens={};
+  GOODS.forEach(function(g){G.tokens[g]=INFO[g].tokens.slice();});
+  G.bonus={'3':shuffle(BONUS['3'].slice()),'4':shuffle(BONUS['4'].slice()),'5':shuffle(BONUS['5'].slice())};
+  G.deckOut=false;G.result=null;G.round=(G.round||0)+1;G.turn=starter;G.starter=starter;G.status='playing';
+  addLog(G,'第 '+G.round+' 轮开始，'+nm(G,starter)+' 先手');
+}
+function refill(G){while(G.market.length<5){if(!G.deck.length){G.deckOut=true;return;}G.market.push(G.deck.pop());}}
+
+function act(G,s,a){
+  if(G.status!=='playing')throw '这一轮已经结束了';
+  if(G.turn!==s)throw '还没轮到你';
+  var P=G.p[s],N=nm(G,s);
+  if(a.t==='take'){
+    var c=G.market[a.i];
+    if(!c||c==='camel')throw '请选择一张货物牌（骆驼要用下面的按钮一次全拿）';
+    if(P.hand.length>=7)throw '手牌已经 7 张了，不能再拿';
+    G.market.splice(a.i,1);P.hand.push(c);sortHand(P.hand);refill(G);
+    addLog(G,N+' 拿走了 1 张'+INFO[c].n);
+  }else if(a.t==='camels'){
+    var n=G.market.filter(function(c){return c==='camel';}).length;
+    if(!n)throw '市场上没有骆驼';
+    G.market=G.market.filter(function(c){return c!=='camel';});P.herd+=n;refill(G);
+    addLog(G,N+' 牵走了 '+n+' 头骆驼');
+  }else if(a.t==='swap'){
+    if(!Array.isArray(a.take)||!Array.isArray(a.give))throw '操作格式不对';
+    var take=a.take.slice().sort(function(x,y){return y-x;});
+    var give=a.give.slice().sort(function(x,y){return y-x;});
+    if(new Set(take).size!==take.length||new Set(give).size!==give.length)throw '同一张牌不能选两次';
+    var k=a.camels|0;
+    if(take.length<2)throw '交换至少要从市场选 2 张';
+    var tk=take.map(function(i){return G.market[i];});
+    if(tk.some(function(c){return !c;}))throw '市场的牌变了，请重新选择';
+    if(tk.indexOf('camel')>=0)throw '交换时不能从市场拿骆驼';
+    var gv=give.map(function(i){return P.hand[i];});
+    if(gv.some(function(c){return !c;}))throw '手牌变了，请重新选择';
+    if(k<0||k>P.herd)throw '你没有这么多骆驼';
+    if(gv.length+k!==tk.length)throw '从市场拿了 '+tk.length+' 张，就要交回 '+tk.length+' 张（现在选了 '+(gv.length+k)+' 张）';
+    if(gv.some(function(c){return tk.indexOf(c)>=0;}))throw '不能拿回和交出同一种货物';
+    if(P.hand.length-gv.length+tk.length>7)throw '交换后手牌会超过 7 张';
+    take.forEach(function(i){G.market.splice(i,1);});
+    give.forEach(function(i){P.hand.splice(i,1);});
+    P.herd-=k;
+    gv.forEach(function(c){G.market.push(c);});
+    for(var q=0;q<k;q++)G.market.push('camel');
+    tk.forEach(function(c){P.hand.push(c);});sortHand(P.hand);
+    addLog(G,N+' 用 '+(gv.length?gv.length+' 张货物':'')+(gv.length&&k?'和 ':'')+(k?k+' 头骆驼':'')+' 换走了 '+tk.map(function(c){return INFO[c].n;}).join('、'));
+  }else if(a.t==='sell'){
+    var g=a.g,cnt=a.n|0;
+    if(!INFO[g]||g==='camel')throw '骆驼不能卖';
+    var have=P.hand.filter(function(c){return c===g;}).length;
+    if(cnt<1||cnt>have)throw '你没有这么多'+INFO[g].n;
+    if(cnt<INFO[g].min)throw INFO[g].n+'一次至少要卖 2 张';
+    var removed=0;
+    P.hand=P.hand.filter(function(c){if(c===g&&removed<cnt){removed++;return false;}return true;});
+    var got=G.tokens[g].splice(0,cnt);
+    got.forEach(function(v){P.goods.push(v);});
+    var bt='';
+    if(cnt>=3){var key=String(Math.min(cnt,5));if(G.bonus[key].length){var b=G.bonus[key].shift();P.bonus.push(b);P.btier.push(key);bt='，另得一枚'+(key==='5'?'5 张以上':key+' 张')+'奖励';}}
+    addLog(G,N+' 卖出 '+cnt+' 张'+INFO[g].n+'，收入 '+sum(got)+' 卢比'+bt);
+  }else throw '未知操作';
+  G.turn=other(s);
+  checkEnd(G);
+}
+function checkEnd(G){
+  var empty=GOODS.filter(function(g){return G.tokens[g].length===0;}).length;
+  if(empty>=3||G.deckOut)endRound(G,empty>=3?'已经有三种货物的标记被拿光':'牌堆用完，市场补不满了');
+}
+function endRound(G,why){
+  var h0=G.p['0'].herd,h1=G.p['1'].herd;
+  var camelTo=h0>h1?'0':(h1>h0?'1':null);
+  var sc={};
+  ['0','1'].forEach(function(s){var P=G.p[s];var gd=sum(P.goods),bn=sum(P.bonus),cm=camelTo===s?5:0;sc[s]={goods:gd,bonus:bn,camel:cm,total:gd+bn+cm,nb:P.bonus.length,ng:P.goods.length};});
+  var w=null,a=sc['0'],b=sc['1'];
+  if(a.total!==b.total)w=a.total>b.total?'0':'1';
+  else if(a.nb!==b.nb)w=a.nb>b.nb?'0':'1';
+  else if(a.ng!==b.ng)w=a.ng>b.ng?'0':'1';
+  if(w)G.p[w].seals++;
+  G.result={why:why,sc:sc,camelTo:camelTo,winner:w};
+  G.nextStarter=w?other(w):other(G.starter||'0');
+  G.status=(w&&G.p[w].seals>=2)?'over':'roundEnd';
+  addLog(G,'第 '+G.round+' 轮结束：'+(w?nm(G,w)+' 赢得一枚印章':'完全平局，没有人拿到印章'));
+}
+function applyCmd(g,s,m){
+  if(m.t==='act')act(g,s,m.a||{});
+  else if(m.t==='next'){if(g.status!=='roundEnd')throw '下一轮已经开始了';startRound(g,g.nextStarter);}
+  else if(m.t==='again'){if(g.status!=='over')throw '新的一局已经开始了';g.p['0'].seals=0;g.p['1'].seals=0;g.round=0;addLog(g,'新的一局');startRound(g,rnd(2)?'1':'0');}
+  else throw '未知操作';
+}
+/* 发给对手的视图：藏起房主手牌、牌堆顺序、奖励标记的分值 */
+function viewFor(g,seat){
+  var v=clone(g),o=other(seat);
+  ['0','1'].forEach(function(s){if(v.p[s])delete v.p[s].token;});
+  v.deck=v.deck.map(function(){return 0;});
+  ['3','4','5'].forEach(function(k){v.bonus[k]=v.bonus[k].map(function(){return 0;});});
+  if(v.p[o]){
+    v.p[o].hand=v.p[o].hand.map(function(){return 0;});
+    if(v.status==='playing')v.p[o].bonus=v.p[o].bonus.map(function(){return 0;});
+  }
+  return v;
+}
+
+/* ---------- 联网（PeerJS 点对点） ---------- */
+var PEER_PREFIX='camelbazaar-v1-';
+var peerOpts=(function(){
+  var q=new URLSearchParams(location.search),o={debug:0};
+  if(q.get('peerhost')){o.host=q.get('peerhost');o.port=+(q.get('peerport')||443);o.path=q.get('peerpath')||'/';o.secure=q.get('peersecure')!=='0';}
+  return o;
+})();
+var role=null;          // 'host' | 'guest' | 'local'
+var peer=null,conn=null,mySeatId=null,linkUp=false,retryTimer=null,closing=false;
+
+function genCode(){var al='ABCDEFGHJKMNPQRSTUVWXYZ23456789',s='';for(var i=0;i<5;i++)s+=al[rnd(al.length)];return s;}
+function joinLink(c){return location.origin+location.pathname+location.search+'#join='+c;}
+function peerAvailable(){return typeof window.Peer==='function';}
+function peerErr(e){
+  var t=e&&e.type;
+  if(t==='peer-unavailable')return '找不到这张桌子。检查一下桌号，或者确认房主的页面还开着。';
+  if(t==='network'||t==='server-error'||t==='socket-error'||t==='socket-closed')return '连不上联机服务器，检查一下网络。';
+  if(t==='browser-incompatible')return '这个浏览器不支持在线对战，换个新版浏览器试试。';
+  if(t==='unavailable-id')return '桌号被占用了';
+  return '连接出错了'+(t?'（'+t+'）':'');
+}
+function teardown(){
+  closing=true;
+  clearTimeout(retryTimer);retryTimer=null;
+  try{if(conn)conn.close();}catch(e){}
+  try{if(peer)peer.destroy();}catch(e){}
+  peer=null;conn=null;linkUp=false;closing=false;
+}
+
+/* 房主 */
+function saveHost(){if(role==='host'&&G)sset('cm-host-'+G.code,JSON.stringify(G));}
+function hostTable(c,g,attempt){
+  teardown();
+  role='host';mode='table';G=g;code=c;mySeatId='0';tableNote='';err='';resetSel();built='';
+  setHash('host='+c);saveHost();render();
+  peer=new Peer(PEER_PREFIX+c,peerOpts);
+  peer.on('open',function(){netNote='';render();});
+  peer.on('connection',function(cn){
+    cn.on('data',function(m){onGuestMsg(cn,m);});
+    cn.on('close',function(){if(cn===conn){conn=null;linkUp=false;render();}});
+    cn.on('error',function(){});
+  });
+  peer.on('disconnected',function(){if(!closing&&peer&&!peer.destroyed){netNote='和联机服务器断开了，正在重连…';render();setTimeout(function(){try{peer.reconnect();}catch(e){}},1500);}});
+  peer.on('error',function(e){
+    if(e.type==='unavailable-id'){
+      // 刷新后旧连接可能还没被服务器释放，稍后重试
+      attempt=(attempt||0)+1;
+      netNote='正在恢复牌桌…（'+attempt+'）';render();
+      if(attempt<12)retryTimer=setTimeout(function(){hostTable(c,G,attempt);},3000);
+      else{netNote='这个桌号被别的页面占着。如果你在别的标签页也开着这桌，请关掉它再刷新。';render();}
+      return;
+    }
+    if(e.type==='peer-unavailable')return;
+    netNote=peerErr(e);render();
+  });
+}
+function onGuestMsg(cn,m){
+  if(!m||typeof m!=='object')return;
+  if(m.t==='hello'){
+    var name=String(m.name||'').slice(0,12)||'对手',token=String(m.token||'');
+    if(!G.p['1']){
+      G.p['1']=newPlayer(name,token);addLog(G,name+' 入座');
+      startRound(G,rnd(2)?'1':'0');G.rev++;
+    }else if(G.p['1'].token!==token){
+      cn.send({t:'reject',msg:'这张桌子已经坐满了。'});setTimeout(function(){try{cn.close();}catch(e){}},500);return;
+    }
+    if(conn&&conn!==cn){try{conn.close();}catch(e){}}
+    conn=cn;linkUp=true;resetSel();saveHost();
+    pushState();render();return;
+  }
+  if(cn!==conn)return;
+  try{var g=clone(G);applyCmd(g,'1',m);g.rev++;G=g;resetSel();saveHost();pushState();render();}
+  catch(x){cn.send({t:'err',msg:typeof x==='string'?x:'操作失败'});}
+}
+function pushState(){if(conn&&conn.open)conn.send({t:'state',g:viewFor(G,'1')});}
+
+/* 对手（加入者） */
+function joinTable(c,name){
+  teardown();
+  role='guest';mode='table';G=null;code=c;mySeatId='1';err='';tableNote='正在连接牌桌 '+c+' …';resetSel();built='';
+  sset('cm-guest-last',c);setHash('join='+c);render();
+  peer=new Peer(peerOpts);
+  peer.on('open',function(){connectToHost(name);});
+  peer.on('disconnected',function(){if(!closing&&peer&&!peer.destroyed)setTimeout(function(){try{peer.reconnect();}catch(e){}},1500);});
+  peer.on('error',function(e){
+    if(e.type==='peer-unavailable'){
+      if(G){netNote='房主暂时离线，正在重连…';render();scheduleRetry(name);}
+      else{tableNote=peerErr(e);render();}
+      return;
+    }
+    if(G){netNote=peerErr(e)+' 正在重试…';render();scheduleRetry(name);}else{tableNote=peerErr(e);render();}
+  });
+}
+function scheduleRetry(name){clearTimeout(retryTimer);retryTimer=setTimeout(function(){if(role==='guest'&&peer&&!peer.destroyed&&peer.open)connectToHost(name);},3000);}
+function connectToHost(name){
+  var cn=peer.connect(PEER_PREFIX+code,{reliable:true});
+  conn=cn;
+  cn.on('open',function(){cn.send({t:'hello',name:name,token:tok});});
+  cn.on('data',function(m){
+    if(cn!==conn||!m)return;
+    if(m.t==='state'){var d=m.g;if(!G||d.rev!==G.rev)resetSel();G=d;linkUp=true;netNote='';busy=false;clearTimeout(busyTimer);render();}
+    else if(m.t==='err'){err=m.msg;busy=false;clearTimeout(busyTimer);render();}
+    else if(m.t==='reject'){tableNote=m.msg;G=null;teardown();render();}
+  });
+  cn.on('close',function(){
+    if(cn!==conn||closing)return;
+    linkUp=false;busy=false;
+    if(G){netNote='和房主的连接断了，正在重连…';render();scheduleRetry(name);}
+  });
+  cn.on('error',function(){});
+}
+
+/* ---------- 页面状态 ---------- */
+var mode='lobby',built='',G=null,code=null,netNote='',tableNote='';
+var busy=false,busyTimer=null,err='',sel={m:[],h:[],k:0},covered=false,copied=false;
+
+function resetSel(){sel={m:[],h:[],k:0};}
+function mySeat(){if(!G)return null;return role==='local'?G.turn:mySeatId;}
+function getName(){var el=document.getElementById('nm');var v=el?el.value.trim():(sget('cm-name')||'');if(v)sset('cm-name',v);return v||sget('cm-name')||'';}
+function setHash(h){var want=h?'#'+h:'';if(location.hash!==want){try{history.replaceState(null,'',location.pathname+location.search+want);}catch(e){}}}
+
+/* ---------- 渲染 ---------- */
+function render(){if(mode==='lobby')renderLobby();else renderTable();}
+
+function rulesHTML(){
+  return '<details class="box rules"><summary>规则速查</summary>'+
+  '<p>每回合只能做一件事：拿牌，或者卖牌。</p>'+
+  '<p><b>拿牌</b>有三种方式。一是从市场拿 1 张货物。二是从市场拿 2 张或更多货物，再用同样数量的手牌或骆驼补回市场；不能从市场拿骆驼，也不能拿回和交出同一种货物。三是把市场上的骆驼一次全部牵走。手牌最多 7 张，骆驼另放，不算手牌。</p>'+
+  '<p><b>卖牌</b>：选一种货物，卖几张都行，按从高到低的顺序拿对应的价格标记。钻石、黄金、白银每次至少卖 2 张。一次卖 3 张、4 张、5 张以上，还能拿一枚对应的奖励标记，游戏中只显示对手拿了哪几种奖励各几个，分值在结算时才揭晓。</p>'+
+  '<p><b>一轮结束</b>：有三种货物的标记被拿光，或者牌堆用完补不满市场。骆驼最多的一方加 5 分，总分高的人赢得一枚印章；平分时比奖励标记的数量，再比货物标记的数量。先拿到 2 枚印章的人获胜，下一轮由上一轮的输家先手。</p>'+
+  '<p class="muted">牌的数量：钻石、黄金、白银各 6 张，丝绸、香料各 8 张，皮革 10 张，骆驼 11 张。</p>'+
+  '</details>';
+}
+
+function savedHostTables(){
+  var out=[];
+  try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf('cm-host-')===0){try{var g=JSON.parse(localStorage.getItem(k));if(g&&g.code&&g.status!=='over')out.push(g);}catch(e){}}}}catch(e){}
+  return out;
+}
+
+function renderLobby(){
+  var pre=(location.hash.match(/^#join=([A-Z0-9]{4,6})$/i)||[])[1]||'';
+  if(built!=='lobby'){
+    built='lobby';
+    var resume=savedHostTables();
+    var resumeHTML=resume.length?'<section class="box"><h2>你开过的桌</h2>'+resume.map(function(g){
+      return '<div class="row" style="justify-content:space-between;margin:6px 0"><span>桌号 <span class="codev">'+esc(g.code)+'</span>，'+esc(g.p['0'].name)+' 对 '+(g.p['1']?esc(g.p['1'].name):'空位')+'</span><span class="row"><button class="btn small primary" data-a="resume" data-code="'+esc(g.code)+'">回到这桌</button><button class="btn small ghost" data-a="forget" data-code="'+esc(g.code)+'">删掉</button></span></div>';
+    }).join('')+'</section>':'';
+    $app.innerHTML=
+      '<header class="hero"><h1>骆驼集市</h1>'+
+      '<p class="lede">两位商人，一个市场。进货、换货、整批卖出，先赢下两轮的人胜出。</p></header>'+
+      '<section class="box">'+
+        '<label class="field"><span>你的昵称</span><input id="nm" maxlength="12" autocomplete="nickname" placeholder="比如：小王" value="'+esc(sget('cm-name')||'')+'"></label>'+
+        '<div class="row"><button class="btn primary" data-a="create" id="createBtn">开一张新桌</button><button class="btn" data-a="local">同屏对战</button></div>'+
+        '<label class="field" style="margin:18px 0 8px"><span>有桌号？直接加入</span></label>'+
+        '<div class="row"><input id="jc" class="code" maxlength="6" placeholder="桌号" value="'+esc(pre)+'"><button class="btn'+(pre?' primary':'')+'" data-a="join" id="joinBtn">加入</button></div>'+
+        '<p class="err" id="lobbyErr" role="alert"></p>'+
+      '</section>'+resumeHTML+
+      '<section class="box"><h2>怎么一起玩</h2>'+
+        '<p>开桌后把邀请链接发给朋友，对方用浏览器打开、填个昵称就能入座，不需要注册任何账号。</p>'+
+        '<p class="muted">牌局保存在开桌人的浏览器里：开桌的一方请保持页面开着；不小心关了，重新打开这个网页点“回到这桌”即可，对方会自动重连。</p>'+
+      '</section>'+rulesHTML();
+    document.getElementById('nm').addEventListener('input',function(e){sset('cm-name',e.target.value.trim());});
+    document.getElementById('jc').addEventListener('keydown',function(e){if(e.key==='Enter')doJoin();});
+  }
+  document.getElementById('lobbyErr').textContent=err||(peerAvailable()?'':'联机组件没有加载成功（可能是网络问题），现在只能用“同屏对战”。');
+  document.getElementById('createBtn').disabled=!peerAvailable();
+  document.getElementById('joinBtn').disabled=!peerAvailable();
+}
+
+function cardHTML(c,attrs,extra){
+  var I=INFO[c];
+  return '<button type="button" class="card '+(extra||'')+'" style="--gc:var(--g-'+c+')" '+attrs+'><span class="em" aria-hidden="true">'+I.e+'</span><span class="cn">'+I.n+'</span></button>';
+}
+function bonusHTML(P,show){if(!P.bonus.length)return '奖励 0 个';var grp={};P.bonus.forEach(function(v,i){var k=(P.btier&&P.btier[i])||'?';if(!grp[k])grp[k]={c:0,s:0};grp[k].c++;grp[k].s+=(v||0);});return '奖励：'+['3','4','5','?'].filter(function(k){return grp[k];}).map(function(k){var lab=k==='?'?'其他奖励':(k==='5'?'5张以上':k+'张')+'奖励';return lab+grp[k].c+'个'+(show?grp[k].s+'分':'');}).join('、')+(show?'（共 <b>'+sum(P.bonus)+'</b> 分）':'');}
+function sealsHTML(n){var s='';for(var i=0;i<2;i++)s+=i<n?'🏅':'◯';return '<span class="seals" aria-label="印章 '+n+' 枚">'+s+'</span>';}
+
+function candidate(me){
+  var P=G.p[me];
+  if(sel.m.length===0&&sel.k===0&&sel.h.length>0){
+    var g=P.hand[sel.h[0]];
+    if(sel.h.some(function(i){return P.hand[i]!==g;}))return {err:'一次只能卖同一种货物'};
+    return {a:{t:'sell',g:g,n:sel.h.length},label:'卖出 '+sel.h.length+' 张'+INFO[g].n};
+  }
+  if(sel.m.length===1&&sel.h.length===0&&sel.k===0){
+    return {a:{t:'take',i:sel.m[0]},label:'拿走这张'+INFO[G.market[sel.m[0]]].n};
+  }
+  if(sel.m.length>=1&&(sel.h.length+sel.k)>0||sel.m.length>=2){
+    return {a:{t:'swap',take:sel.m.slice(),give:sel.h.slice(),camels:sel.k},label:'交换：拿 '+sel.m.length+' 张，交回 '+(sel.h.length+sel.k)+' 张'};
+  }
+  if(sel.k>0)return {err:'先在市场里选要换走的货物'};
+  return null;
+}
+
+function connBadge(){
+  if(role==='local')return '';
+  var on,txt;
+  if(role==='host'){on=linkUp;txt=G&&G.p['1']?(linkUp?nm(G,'1')+' 在线':nm(G,'1')+' 离线'):'等人加入';}
+  else{on=linkUp;txt=linkUp?'已连上房主':'未连接';}
+  return ' · <span class="dot'+(on?' on':'')+'"></span>'+esc(txt);
+}
+
+function renderTable(){
+  built='table';
+  var top='<div class="topbar"><button class="btn ghost" data-a="lobby">返回大厅</button>';
+  if(!G){$app.innerHTML=top+'</div><p class="muted" style="text-align:center;padding:40px 0">'+esc(tableNote||'正在读取牌桌…')+'</p>';return;}
+  top+='<span class="info">'+(role==='local'?'同屏对战':'桌号 <span class="codev">'+esc(G.code)+'</span>')+(G.round?'，第 '+G.round+' 轮':'')+connBadge()+'</span></div>'+
+    (netNote?'<p class="err" role="status">'+esc(netNote)+'</p>':'');
+
+  if(G.status==='waiting'){
+    var link=joinLink(G.code);
+    $app.innerHTML=top+'<section class="box waiting"><h2>等朋友入座</h2>'+
+      '<p>桌号 <span class="codev">'+esc(G.code)+'</span></p>'+
+      '<p>把这个链接发给朋友，对方打开后填个昵称就能坐下，游戏自动开始：</p>'+
+      '<p class="linkbox">'+esc(link)+'</p>'+
+      '<div class="row"><button class="btn primary" data-a="copy">'+(copied?'已复制':'复制邀请链接')+'</button>'+
+      (navigator.share?'<button class="btn" data-a="share">分享…</button>':'')+'</div>'+
+      '<p class="muted" style="margin-top:12px">也可以让对方打开本网页，在“有桌号？直接加入”里输入桌号。等待期间请别关掉这个页面。</p>'+
+      '</section>'+rulesHTML();
+    return;
+  }
+
+  var me=mySeat();
+  var playing=G.status==='playing';
+  if(role==='local'&&covered&&playing){
+    $app.innerHTML=top+'<section class="box cover"><p class="big">轮到 '+esc(nm(G,G.turn))+'</p><p class="muted">把设备交给对方，再点下面的按钮看手牌。</p><button class="btn primary" data-a="reveal">显示我的牌</button></section>';
+    return;
+  }
+  var bottom=me||'0',up=other(bottom);
+  var B=G.p[bottom],T=G.p[up];
+  var myTurn=playing&&me!==null&&G.turn===me;
+  var h=top;
+
+  if(G.result&&(G.status==='roundEnd'||G.status==='over')){
+    var R=G.result,s0=R.sc[bottom],s1=R.sc[up];
+    var title=G.status==='over'?(nm(G,R.winner)+' 赢下了整局'):('第 '+G.round+' 轮结束');
+    h+='<section class="box result"><h2>'+esc(title)+'</h2><p class="muted">'+esc(R.why)+'。</p>'+
+      '<div class="scroll"><table><thead><tr><th></th><th>'+esc(B.name)+'</th><th>'+esc(T.name)+'</th></tr></thead><tbody>'+
+      '<tr><td>货物标记</td><td>'+s0.goods+'</td><td>'+s1.goods+'</td></tr>'+
+      '<tr><td>奖励标记</td><td>'+s0.bonus+'（'+s0.nb+' 枚）</td><td>'+s1.bonus+'（'+s1.nb+' 枚）</td></tr>'+
+      '<tr><td>骆驼最多</td><td>'+s0.camel+'</td><td>'+s1.camel+'</td></tr>'+
+      '<tr class="total"><td>合计</td><td>'+s0.total+'</td><td>'+s1.total+'</td></tr></tbody></table></div>'+
+      '<p>'+(R.winner?esc(nm(G,R.winner))+' 赢得这一轮的印章。':'完全平局，这一轮没有人拿到印章。')+'</p>';
+    if(G.status==='roundEnd')h+='<button class="btn primary" data-a="next" '+(busy?'disabled':'')+'>开始第 '+(G.round+1)+' 轮</button>';
+    else h+='<button class="btn primary" data-a="again" '+(busy?'disabled':'')+'>再来一整局</button>';
+    h+='</section>';
+  }
+
+  var nT=T.hand.length;
+  h+='<section class="seat'+(playing&&G.turn===up?' active':'')+'"><div class="who"><span class="pname">'+esc(T.name)+'</span>'+sealsHTML(T.seals)+(playing&&G.turn===up?'<span class="tag">行动中</span>':'')+'</div>'+
+    '<div class="seat-row"><div class="backs" aria-label="手牌 '+nT+' 张">'+(new Array(nT+1).join('<span class="mini-back"></span>'))+'<span class="cnt">'+nT+' 张手牌</span></div>'+
+    '<div>🐪 '+T.herd+' 头</div><div>价格标记 '+T.goods.length+' 枚（共 <b>'+sum(T.goods)+'</b> 卢比）</div><div>'+bonusHTML(T,!playing)+'</div></div></section>';
+
+  h+='<section class="board"><div class="piles">'+GOODS.map(function(g){
+    var pile=G.tokens[g]||[];
+    return '<div class="pile'+(pile.length?'':' empty')+'" style="--gc:var(--g-'+g+')"><span class="coin">'+(pile.length?pile[0]:'·')+'</span><span>'+INFO[g].e+' '+INFO[g].n+'</span><span>剩 '+pile.length+' 枚</span><span class="vals" aria-label="剩余标记面值">'+(pile.length?pile.join(' '):'—')+'</span></div>';
+  }).join('')+'</div>'+
+  '<div class="bonus-row">'+['3','4','5'].map(function(k){return '<span class="bchip">'+(k==='5'?'5 张以上':k+' 张')+'奖励 剩 '+G.bonus[k].length+'</span>';}).join('')+'<span class="bchip">骆驼最多 +5</span></div>'+
+  '<div class="market-row"><div class="market" role="group" aria-label="市场">'+G.market.map(function(c,i){
+    var on=sel.m.indexOf(i)>=0;
+    var attrs=myTurn&&c!=='camel'?'data-a="m" data-i="'+i+'" aria-pressed="'+on+'" aria-label="市场：'+INFO[c].n+'"':(myTurn?'data-a="camelTip" aria-label="市场：骆驼"':'disabled aria-label="市场：'+INFO[c].n+'"');
+    return cardHTML(c,attrs,on?'sel':'');
+  }).join('')+'</div><div class="deck"><div class="card back" aria-hidden="true"></div><span>牌堆 '+G.deck.length+'</span></div></div></section>';
+
+  var line,hint='',btns='';
+  if(!playing)line='这一轮结束了';
+  else if(myTurn)line='轮到你了';
+  else line='等 '+nm(G,G.turn)+' 出手…';
+  if(myTurn){
+    var cand=candidate(me);
+    if(cand&&cand.err)hint=cand.err;
+    else if(cand){
+      var e=null;try{act(clone(G),me,cand.a);}catch(x){e=String(x);}
+      btns+='<button class="btn primary" data-a="do" '+(e||busy?'disabled':'')+'>'+esc(cand.label)+'</button>';
+      if(e)hint=e;
+    }else hint='点市场里的货物：选 1 张直接拿走，选多张再选手牌或骆驼来交换。点自己的手牌：选同一种货物卖出。';
+    var nc=G.market.filter(function(c){return c==='camel';}).length;
+    if(nc)btns+='<button class="btn" data-a="camels" '+(busy?'disabled':'')+'>牵走市场上全部 '+nc+' 头骆驼</button>';
+    if(sel.m.length||sel.h.length||sel.k)btns+='<button class="btn ghost" data-a="clear">取消选择</button>';
+  }
+  h+='<section class="status"><p class="line" aria-live="polite">'+esc(line)+'</p>'+(err?'<p class="err" role="alert">'+esc(err)+'</p>':'')+(hint?'<p class="hint">'+esc(hint)+'</p>':'')+(btns?'<div class="row">'+btns+'</div>':'')+'</section>';
+
+  var handHTML;
+  if(!B.hand.length)handHTML='<p class="muted" style="margin:0">手里没有货物</p>';
+  else handHTML='<div class="hand" role="group" aria-label="你的手牌">'+B.hand.map(function(c,i){
+    var on=sel.h.indexOf(i)>=0;
+    return cardHTML(c,myTurn?'data-a="h" data-i="'+i+'" aria-pressed="'+on+'"':'disabled',on?'sel':'');
+  }).join('')+'</div>';
+  h+='<section class="seat'+(myTurn?' active':'')+'"><div class="who"><span class="pname">'+esc(B.name)+(role!=='local'?'（你）':'')+'</span>'+sealsHTML(B.seals)+(playing&&G.turn===bottom?'<span class="tag">行动中</span>':'')+'</div>'+
+    handHTML+
+    '<div class="herd-row"><div class="card" style="--gc:var(--g-camel)" aria-label="骆驼 '+B.herd+' 头"><span class="em" aria-hidden="true">🐪</span><span class="cn">×'+B.herd+'</span></div>'+
+    (myTurn&&B.herd?'<div class="stepper"><span>拿去交换的骆驼</span><button type="button" data-a="k-" aria-label="少一头">−</button><output>'+sel.k+'</output><button type="button" data-a="k+" aria-label="多一头">+</button></div>':'')+
+    '</div>'+
+    '<p class="income">价格标记 '+B.goods.length+' 枚，共 <b>'+sum(B.goods)+'</b> 卢比</p><p class="income">'+bonusHTML(B,true)+'</p>'+
+    '<p class="income">你这一轮的收入：'+(sum(B.goods)+sum(B.bonus))+' 卢比（价格标记 '+sum(B.goods)+'，奖励 '+sum(B.bonus)+'，不含骆驼加分）</p>'+
+    '</section>';
+
+  var lg=(G.log||[]).slice(-12).reverse();
+  h+='<details class="box log"'+(window.innerWidth>700?' open':'')+'><summary>最近的动作</summary><ul>'+lg.map(function(l){return '<li>'+esc(l)+'</li>';}).join('')+'</ul></details>';
+  h+=rulesHTML();
+  var openLog=document.querySelector('details.log'),openRules=document.querySelector('details.rules');
+  var logState=openLog?openLog.open:null,rulesState=openRules?openRules.open:null;
+  $app.innerHTML=h;
+  if(logState!==null)document.querySelector('details.log').open=logState;
+  if(rulesState!==null)document.querySelector('details.rules').open=rulesState;
+}
+
+/* ---------- 操作 ---------- */
+function commit(m){
+  if(busy||!G)return;
+  err='';
+  if(role==='guest'){
+    if(!conn||!conn.open||!linkUp){err='还没连上房主，稍等一下。';render();return;}
+    busy=true;render();conn.send(m);
+    clearTimeout(busyTimer);busyTimer=setTimeout(function(){if(busy){busy=false;err='房主没有回应，请再试一次。';render();}},8000);
+    return;
+  }
+  var g;
+  try{g=clone(G);applyCmd(g,mySeat(),m);g.rev=(g.rev||0)+1;}
+  catch(x){err=(x instanceof Error)?'出错了：'+x.message:String(x);render();return;}
+  G=g;resetSel();
+  if(role==='local'){if(G.status==='playing')covered=true;render();return;}
+  saveHost();pushState();render();
+}
+
+function createTable(){
+  var name=getName();
+  if(!name){err='先填一个昵称';render();document.getElementById('nm').focus();return;}
+  var c=genCode();var g=newGame(c,name,tok);addLog(g,name+' 开了这张桌子');
+  copied=false;hostTable(c,g,0);
+}
+function doJoin(){
+  var name=getName();
+  var c=(document.getElementById('jc').value||'').trim().toUpperCase();
+  if(!name){err='先填一个昵称';render();document.getElementById('nm').focus();return;}
+  if(!/^[A-Z0-9]{4,6}$/.test(c)){err='桌号不对，应该是 5 位字母或数字';render();return;}
+  joinTable(c,name);
+}
+function goLobby(){teardown();role=null;mode='lobby';G=null;code=null;built='';err='';netNote='';resetSel();setHash('');render();}
+function startLocal(){
+  teardown();
+  var n1=getName()||'玩家一';
+  var g=newGame('LOCAL',n1,'local-0');
+  g.p['1']=newPlayer(n1==='玩家二'?'玩家一':'玩家二','local-1');
+  startRound(g,rnd(2)?'1':'0');
+  role='local';mode='table';G=g;code=null;err='';resetSel();covered=true;built='';
+  render();
+}
+function toggle(arr,i){var k=arr.indexOf(i);if(k>=0)arr.splice(k,1);else arr.push(i);}
+function copyText(t){
+  if(navigator.clipboard&&navigator.clipboard.writeText)return navigator.clipboard.writeText(t);
+  return new Promise(function(res,rej){var ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');res();}catch(e){rej(e);}ta.remove();});
+}
+
+$app.addEventListener('click',function(ev){
+  var b=ev.target.closest('[data-a]');if(!b||b.disabled)return;
+  var a=b.getAttribute('data-a'),me=mySeat();
+  switch(a){
+    case 'create':createTable();break;
+    case 'join':doJoin();break;
+    case 'local':startLocal();break;
+    case 'resume':{var c=b.getAttribute('data-code');try{var g=JSON.parse(sget('cm-host-'+c));if(g){copied=false;hostTable(c,g,0);}}catch(e){}break;}
+    case 'forget':sdel('cm-host-'+b.getAttribute('data-code'));built='';render();break;
+    case 'lobby':goLobby();break;
+    case 'copy':copyText(joinLink(G.code)).then(function(){copied=true;render();},function(){});break;
+    case 'share':navigator.share({title:'骆驼集市',text:'来骆驼集市和我对战，桌号 '+G.code,url:joinLink(G.code)}).catch(function(){});break;
+    case 'm':toggle(sel.m,+b.getAttribute('data-i'));err='';render();break;
+    case 'h':toggle(sel.h,+b.getAttribute('data-i'));err='';render();break;
+    case 'camelTip':err='骆驼不能单张拿，用下面的按钮一次全部牵走。';render();break;
+    case 'k+':if(G&&me&&sel.k<G.p[me].herd)sel.k++;render();break;
+    case 'k-':if(sel.k>0)sel.k--;render();break;
+    case 'clear':resetSel();err='';render();break;
+    case 'do':{var cd=candidate(me);if(cd&&cd.a)commit({t:'act',a:cd.a});break;}
+    case 'camels':commit({t:'act',a:{t:'camels'}});break;
+    case 'next':commit({t:'next'});break;
+    case 'again':commit({t:'again'});break;
+    case 'reveal':covered=false;render();break;
+  }
+});
+
+/* ---------- 启动 ---------- */
+(function boot(){
+  var h=location.hash;
+  var mh=h.match(/^#host=([A-Z0-9]{4,6})$/i);
+  if(mh&&peerAvailable()){
+    var c=mh[1].toUpperCase();
+    try{var g=JSON.parse(sget('cm-host-'+c));if(g){hostTable(c,g,0);return;}}catch(e){}
+  }
+  var mj=h.match(/^#join=([A-Z0-9]{4,6})$/i);
+  if(mj&&peerAvailable()&&sget('cm-name')&&sget('cm-guest-last')===mj[1].toUpperCase()){
+    // 刷新页面时自动重新入座
+    joinTable(mj[1].toUpperCase(),sget('cm-name'));return;
+  }
+  render();
+  if(mj){var nmEl=document.getElementById('nm');if(nmEl&&!nmEl.value)nmEl.focus();}
+})();
+window.addEventListener('beforeunload',function(){closing=true;try{if(peer)peer.destroy();}catch(e){}});
+})();
+</script>
+</body>
+</html>
